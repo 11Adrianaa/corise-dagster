@@ -18,8 +18,8 @@ from workspaces.types import Aggregation, Stock
 
 @op(
     config_schema = {"s3_key": str},
-    required_resource_keys = {"s3"}
-    tags = {"kind": "s3"}
+    required_resource_keys = {"s3"},
+    tags = {"kind": "s3"},
     out = {"stocks": Out(dagster_type = List[Stock],
     description = "Get a list of stock data from s3_key")}
 )
@@ -28,7 +28,7 @@ from workspaces.types import Aggregation, Stock
     #in order to extract it we will use  get_data and we will convert it to our desired output.
 
 
-def get_s3_data_op(context):
+def get_s3_data(context):
 
     file_s3 = context.op_config["s3_key"]
     s3_data = context.resources.s3.get_data(file_s3)
@@ -54,7 +54,7 @@ def get_s3_data_op(context):
     #The input we will gave to the op is a list, and we want the result as the Aggregation format.
 
 
-def process_data_op(context, stocks):
+def process_data(context, stocks):
     
     higher = max(stocks, key = lambda x: x.high)
 
@@ -66,12 +66,12 @@ def process_data_op(context, stocks):
 
 
 @op(
-    required_resource_keys = {"redis"}
-    tags = {"kind": "redis"}
+    required_resource_keys = {"redis"},
+    tags = {"kind": "redis"},
     description = "Upload data into Redis",
     ins = {"higher_value_data": In(dagster_type = Aggregation)}
 )
-def put_redis_data_op(context, higher_value_data):
+def put_redis_data(context, higher_value_data):
     #OpExecutionContext
     higher_date = str(higher_value_data.date)
     higher_value = str(higher_value_data.high)
@@ -79,12 +79,12 @@ def put_redis_data_op(context, higher_value_data):
     context.resources.redis.put_data(name = higher_date, value = higher_value)
 
 @op(
-    required_resource_keys = {"s3"}
-    tags = {"kind" = "s3"}
+    required_resource_keys = {"s3"},
+    tags = {"kind": "s3"},
     description = "Upload data into s3",
     ins = {"higher_value_data": In(dagster_type = Aggregation)}
 )
-def put_s3_data_op(context, higher_value_data):
+def put_s3_data(context, higher_value_data):
     #OpExecutionContext
     higher_date = str(higher_value_data.date)
     higher_value = higher_value_data.high
@@ -92,7 +92,7 @@ def put_s3_data_op(context, higher_value_data):
     context.resources.s3.put_data(name = higher_date, value = higher_value) 
 
 
-@graphs
+@graph
 def machine_learning_graph():
     all_stocks = get_s3_data()
     highest = process_data(all_stocks)
