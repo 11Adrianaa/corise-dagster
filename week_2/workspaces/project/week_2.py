@@ -18,20 +18,28 @@ from workspaces.types import Aggregation, Stock
 
 @op(
     config_schema = {"s3_key": str},
+    required_resource_keys = {"s3"}
+    tags = {"kind": "s3"}
     out = {"stocks": Out(dagster_type = List[Stock],
     description = "Get a list of stock data from s3_key")}
 )
 
-    #The information we are starting to work with in our pipeline for now comes
-    #from a csv file, we will extract it using s3_key context and csv_helper function.
-    #The input s3_key is a string, meanwhile the output we will get is a list of stock.
+    #The information we are working with in our pipeline comes now from our S3 resource,
+    #in order to extract it we will use  get_data and we will convert it to our desired output.
 
 
 def get_s3_data_op(context):
 
-    file_name = context.op_config["s3_key"]
+    file_s3 = context.op_config["s3_key"]
+    s3_data = context.resources.s3.get_data(file_s3)
 
-    return list(csv_helper(file_name))
+    stocks_list = []
+
+    for row in s3_data:
+        stock = Stock.from_list(row)
+        stocks_list.append(stock)
+
+    return stocks_list
 
 
 @op(description = "Process of data in order to get the date that contains the higher stock value",
@@ -58,24 +66,38 @@ def process_data_op(context, stocks):
 
 
 @op(
+    required_resource_keys = {"redis"}
+    tags = {"kind": "redis"}
     description = "Upload data into Redis",
     ins = {"higher_value_data": In(dagster_type = Aggregation)}
 )
 def put_redis_data_op(context, higher_value_data):
-    pass
+    #OpExecutionContext
+    higher_date = str(higher_value_data.date)
+    higher_value = str(higher_value_data.high)
 
+    context.resources.redis.put_data(name = higher_date, value = higher_value)
 
 @op(
+    required_resource_keys = {"s3"}
+    tags = {"kind" = "s3"}
     description = "Upload data into s3",
     ins = {"higher_value_data": In(dagster_type = Aggregation)}
 )
 def put_s3_data_op(context, higher_value_data):
-    pass
+    #OpExecutionContext
+    higher_date = str(higher_value_data.date)
+    higher_value = higher_value_data.high
+
+    context.resources.s3.put_data(name = higher_date, value = higher_value) 
 
 
-@graph
+@graphs
 def machine_learning_graph():
-    pass
+    all_stocks = get_s3_data()
+    highest = process_data(all_stocks)
+    put_redis_data(highest)
+    put_s3_data(highest)
 
 
 local = {
@@ -91,16 +113,13 @@ docker = {
 }
 
 machine_learning_job_local = machine_learning_graph.to_job(
-    name="machine_learning_job_local",
+    name = "machine_learning_job_local",
+    config = local,
+    resource_defs = {"s3": mock_s3_resource, "redis": ResourceDefinition.mock_resource()},
 )
 
 machine_learning_job_docker = machine_learning_graph.to_job(
-    name="machine_learning_job_docker",
+    name = "machine_learning_job_docker",
+    config = docker,
+    resource_defs = {"s3": s3_resource, "redis": redis_resource},
 )
-
-
-"""@job
-def machine_learning_job():
-    higher_value_data = process_data_op(get_s3_data_op())
-    put_redis_data_op(higher_value_data)
-    put_s3_data_op(higher_value_data)"""
