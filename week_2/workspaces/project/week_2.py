@@ -27,7 +27,6 @@ from workspaces.types import Aggregation, Stock
     #The information we are working with in our pipeline comes now from our S3 resource,
     #in order to extract it we will use  get_data and we will convert it to our desired output.
 
-
 def get_s3_data(context):
 
     file_s3 = context.op_config["s3_key"]
@@ -49,20 +48,11 @@ def get_s3_data(context):
             description = "Two fields, Date that contains the higher value and the higher value")}
 )
 
-    #Given a list of stocks from different dates, we will get the date that has
-    #the higher stock value.
-    #The input we will gave to the op is a list, and we want the result as the Aggregation format.
-
-
 def process_data(context, stocks):
     
     higher = max(stocks, key = lambda x: x.high)
 
     return Aggregation(date = higher.date, high= higher.high)
-
-
-    #We will use lambda in order to get the higher value and its corresponding date.
-
 
 
 @op(
@@ -71,12 +61,16 @@ def process_data(context, stocks):
     description = "Upload data into Redis",
     ins = {"higher_value_data": In(dagster_type = Aggregation)}
 )
+
 def put_redis_data(context, higher_value_data):
-    #OpExecutionContext
+    
+    #We are giving redis the values as it's expecting them
+
     higher_date = str(higher_value_data.date)
     higher_value = str(higher_value_data.high)
 
     context.resources.redis.put_data(name = higher_date, value = higher_value)
+
 
 @op(
     required_resource_keys = {"s3"},
@@ -84,8 +78,11 @@ def put_redis_data(context, higher_value_data):
     description = "Upload data into s3",
     ins = {"higher_value_data": In(dagster_type = Aggregation)}
 )
+
 def put_s3_data(context, higher_value_data):
-    #OpExecutionContext
+    
+    #We are giving s3 the values as it's expecting them
+
     higher_date = str(higher_value_data.date)
     higher_value = higher_value_data.high
 
@@ -111,6 +108,9 @@ docker = {
     },
     "ops": {"get_s3_data": {"config": {"s3_key": S3_FILE}}},
 }
+
+    #We are going to use the configuration and resource_def to 
+    #make the job run in the two different sides of the end of our pipeline
 
 machine_learning_job_local = machine_learning_graph.to_job(
     name = "machine_learning_job_local",
